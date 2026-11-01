@@ -4,6 +4,7 @@
 //   Color(oklch: 0.55, 0.15, 262)
 //   Color(oklch: 0.55, 0.15, 262, opacity: 0.5)
 //   UIColor(oklch: 0.55, 0.15, 262)
+//   Color(light: Color(oklch: 0.97, 0.01, 80), dark: Color(oklch: 0.15, 0.01, 60))
 //
 // L: lightness 0...1, C: chroma 0...~0.37, H: hue in degrees.
 // Renders in Display P3 by default (sRGB optional). Colors outside the
@@ -104,4 +105,45 @@ public extension UIColor {
         }
     }
 }
+#endif
+
+// MARK: - Light and dark
+
+#if canImport(UIKit) && !os(watchOS)
+public extension UIColor {
+    /// A color that follows the interface style: `dark` in dark mode, `light` otherwise.
+    convenience init(light: UIColor, dark: UIColor) {
+        self.init { $0.userInterfaceStyle == .dark ? dark : light }
+    }
+}
+
+#if canImport(SwiftUI)
+public extension Color {
+    /// A color that follows the color scheme: `dark` in dark mode, `light` otherwise.
+    init(light: Color, dark: Color) {
+        self.init(uiColor: UIColor(light: UIColor(light), dark: UIColor(dark)))
+    }
+}
+#endif
+
+#elseif canImport(AppKit)
+import AppKit
+
+public extension NSColor {
+    /// A color that follows the appearance: `dark` in dark mode, `light` otherwise.
+    convenience init(light: NSColor, dark: NSColor) {
+        self.init(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+        }
+    }
+}
+
+#if canImport(SwiftUI)
+public extension Color {
+    /// A color that follows the color scheme: `dark` in dark mode, `light` otherwise.
+    init(light: Color, dark: Color) {
+        self.init(nsColor: NSColor(light: NSColor(light), dark: NSColor(dark)))
+    }
+}
+#endif
 #endif

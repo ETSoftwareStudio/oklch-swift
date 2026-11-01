@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import OKLCHColor
 
@@ -41,6 +42,17 @@ final class OKLCHTests: XCTestCase {
         XCTAssertGreaterThan(mapped.green, mapped.red)
         XCTAssertGreaterThan(mapped.green, mapped.blue)
         XCTAssertGreaterThan(reduced.green, reduced.red)
+    }
+
+    func testLightDarkColorFollowsTheColorScheme() throws {
+        guard #available(iOS 17, macOS 14, tvOS 17, visionOS 1, *) else { throw XCTSkip("Color.resolve needs iOS 17") }
+        let color = Color(light: Color(oklch: 1, 0, 0), dark: Color(oklch: 0, 0, 0))
+        var environment = EnvironmentValues()
+
+        environment.colorScheme = .light
+        XCTAssertEqual(color.resolve(in: environment).red, 1, accuracy: 0.01)
+        environment.colorScheme = .dark
+        XCTAssertEqual(color.resolve(in: environment).red, 0, accuracy: 0.01)
     }
 
     private func assertRGB(
