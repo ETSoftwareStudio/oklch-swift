@@ -6,6 +6,9 @@
 //   UIColor(oklch: 0.55, 0.15, 262)
 //   Color(light: Color(oklch: 0.97, 0.01, 80), dark: Color(oklch: 0.15, 0.01, 60))
 //
+//   let brand = OKLCH(0.55, 0.15, 262)
+//   brand.mixed(with: OKLCH(0.9, 0.05, 80), by: 0.3).color()
+//
 // L: lightness 0...1, C: chroma 0...~0.37, H: hue in degrees.
 // Renders in Display P3 by default (sRGB optional). Colors outside the
 // target gamut are mapped with the CSS Color 4 algorithm: chroma drops at
@@ -19,7 +22,82 @@ public enum OKLCHGamut {
     case sRGB
 }
 
-public enum OKLCH {
+/// A color in OKLCH, with an alpha value.
+public struct OKLCH: Hashable, Sendable {
+    /// Lightness, 0...1. The initializer does not clamp it.
+    public var l: Double
+    /// Chroma, 0 or more.
+    public var c: Double
+    /// Hue in degrees, always wrapped to 0..<360, also when set.
+    public var h: Double {
+        didSet { if h < 0 || h >= 360 || h == 0 { h = Self.wrap(h) } }
+    }
+    /// Opacity, 0...1.
+    public var alpha: Double
+
+    /// Chroma below this value has no meaningful hue (CSS Color 4, as in color.js).
+    static let powerlessChroma = 0.000004
+
+    /// Makes a color from lightness, chroma and hue in degrees.
+    /// The hue wraps to 0..<360, so -30 becomes 330.
+    public init(_ l: Double, _ c: Double, _ h: Double, alpha: Double = 1) {
+        self.l = l
+        self.c = c
+        self.h = Self.wrap(h)
+        self.alpha = alpha
+    }
+
+    /// Makes a color from linear sRGB components. Values outside 0...1 (extended sRGB) are valid.
+    /// When the chroma is below 0.000004, the hue has no meaning and is 0.
+    init(linearRed r: Double, green g: Double, blue b: Double, alpha: Double = 1) {
+        let lab = Self.oklab(linear: (r, g, b), .sRGB)
+        let chroma = (lab.1 * lab.1 + lab.2 * lab.2).squareRoot()
+        let hue = chroma < Self.powerlessChroma ? 0 : atan2(lab.2, lab.1) * 180 / .pi
+        self.init(lab.0, chroma, hue, alpha: alpha)
+    }
+
+    /// Mixes this color with `other`, like CSS `color-mix(in oklch)`.
+    ///
+    /// - The hue takes the shorter way around the circle.
+    /// - A grey side (chroma below 0.000004) takes the hue of the other side.
+    /// - Lightness and chroma mix premultiplied by alpha.
+    /// - `t` is not clamped: 0 gives this color, 1 gives `other`, and other values extrapolate.
+    public func mixed(with other: OKLCH, by t: Double) -> OKLCH {
+        var h1 = h, h2 = other.h
+        let grey1 = c < Self.powerlessChroma, grey2 = other.c < Self.powerlessChroma
+        switch (grey1, grey2) {
+        case (true, true): h1 = 0; h2 = 0
+        case (true, false): h1 = h2
+        case (false, true): h2 = h1
+        case (false, false): break
+        }
+        let d = h2 - h1
+        if d > 180 {
+            h1 += 360
+        } else if d < -180 {
+            h2 += 360
+        }
+        let hue = h1 + (h2 - h1) * t
+
+        let mixedAlpha = alpha + (other.alpha - alpha) * t
+        let lightness: Double, chroma: Double
+        if mixedAlpha == 0 {
+            lightness = l + (other.l - l) * t
+            chroma = c + (other.c - c) * t
+        } else {
+            lightness = (l * alpha + (other.l * other.alpha - l * alpha) * t) / mixedAlpha
+            chroma = (c * alpha + (other.c * other.alpha - c * alpha) * t) / mixedAlpha
+        }
+        return OKLCH(lightness, chroma, hue, alpha: mixedAlpha)
+    }
+
+    private static func wrap(_ h: Double) -> Double {
+        var h = h.truncatingRemainder(dividingBy: 360)
+        if h < 0 { h += 360 }
+        // A tiny negative hue rounds up to 360 after the addition; -0 becomes 0.
+        return h >= 360 || h == 0 ? 0 : h
+    }
+
     /// Converts OKLCH to gamma-encoded RGB components (0...1) in the given gamut.
     public static func rgb(
         _ l: Double, _ c: Double, _ h: Double, in gamut: OKLCHGamut = .displayP3
@@ -95,6 +173,7 @@ public enum OKLCH {
     }
 
     // Linear RGB in the given gamut -> OKLab (Ottosson's forward matrices).
+    // cbrt keeps the sign, so extended (negative) components work.
     private static func oklab(linear v: Triple, _ gamut: OKLCHGamut) -> Triple {
         var (r, g, b) = v
         if gamut == .displayP3 {
@@ -147,6 +226,36 @@ public extension Color {
                   red: rgb.red, green: rgb.green, blue: rgb.blue, opacity: opacity)
     }
 }
+
+public extension OKLCH {
+    /// Makes a color from a resolved SwiftUI color, through its extended linear sRGB components.
+    @available(iOS 17, macOS 14, tvOS 17, watchOS 10, visionOS 1, *)
+    init(_ color: Color.Resolved) {
+        self.init(linearRed: Double(color.linearRed), green: Double(color.linearGreen),
+                  blue: Double(color.linearBlue), alpha: Double(color.opacity))
+    }
+
+    /// Returns the color in the given gamut, with `alpha` as the opacity.
+    /// Colors outside the gamut are mapped as in `OKLCH.rgb(_:_:_:in:)`.
+    func color(in gamut: OKLCHGamut = .displayP3) -> Color {
+        Color(oklch: l, c, h, opacity: alpha, gamut: gamut)
+    }
+}
+#endif
+
+#if canImport(CoreGraphics)
+import CoreGraphics
+
+extension OKLCH {
+    /// Converts a Core Graphics color to extended linear sRGB first. Returns nil if the conversion fails.
+    init?(cgColor: CGColor) {
+        guard let space = CGColorSpace(name: CGColorSpace.extendedLinearSRGB),
+              let linear = cgColor.converted(to: space, intent: .defaultIntent, options: nil),
+              let v = linear.components, v.count == 4
+        else { return nil }
+        self.init(linearRed: Double(v[0]), green: Double(v[1]), blue: Double(v[2]), alpha: Double(v[3]))
+    }
+}
 #endif
 
 #if canImport(UIKit)
@@ -160,6 +269,24 @@ public extension UIColor {
         } else {
             self.init(red: rgb.red, green: rgb.green, blue: rgb.blue, alpha: alpha)
         }
+    }
+}
+
+public extension OKLCH {
+    /// Makes a color from a UIColor, through extended linear sRGB. Returns nil if the conversion fails.
+    init?(_ color: UIColor) {
+        self.init(cgColor: color.cgColor)
+    }
+}
+#endif
+
+#if canImport(AppKit) && !targetEnvironment(macCatalyst)
+import AppKit
+
+public extension OKLCH {
+    /// Makes a color from an NSColor, through extended linear sRGB. Returns nil if the conversion fails.
+    init?(_ color: NSColor) {
+        self.init(cgColor: color.cgColor)
     }
 }
 #endif

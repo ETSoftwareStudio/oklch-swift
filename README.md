@@ -26,12 +26,29 @@ It follows the color scheme, including `.preferredColorScheme`. `NSColor` has th
   until clipping the rest is no longer noticeable. Browsers currently clip
   instead, so very saturated colors can differ from what Chrome shows.
 
+## The OKLCH value
+
+`OKLCH` holds L, C, H and alpha, so you can read and mix colors in OKLCH.
+
+```swift
+let accent = OKLCH(0.55, 0.15, 262)                   // the hue wraps to 0..<360
+let fromColor = OKLCH(color.resolve(in: environment)) // iOS 17 and later
+let fromUIColor = OKLCH(UIColor.systemBlue)           // nil if the conversion fails
+let hover = accent.mixed(with: OKLCH(1, 0, 0), by: 0.2)
+hover.color()                                         // Display P3; color(in: .sRGB) is optional
+```
+
+- `mixed(with:by:)` works like CSS `color-mix(in oklch)`: the hue takes the shorter way, and `t` is not clamped.
+- A grey (chroma below 0.000004) has no hue: its hue is 0, and in a mix it takes the hue of the other color.
+- A mix with alpha premultiplies L and C, so a transparent color does not pull the result toward its L and C.
+- A color converts through the system color management. For Display P3 colors, the result can differ from CSS by about 0.0001.
+
 ## Install
 
 In Xcode: File › Add Package Dependencies, then enter this repository's URL.
 
 ```swift
-.package(url: "https://github.com/ETSoftwareStudio/oklch-swift.git", from: "1.1.1")
+.package(url: "https://github.com/ETSoftwareStudio/oklch-swift.git", from: "1.2.0")
 ```
 
 For gradients blended in OKLCH, pair it with
