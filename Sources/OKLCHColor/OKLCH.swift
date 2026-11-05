@@ -8,8 +8,8 @@
 //
 // L: lightness 0...1, C: chroma 0...~0.37, H: hue in degrees.
 // Renders in Display P3 by default (sRGB optional). Colors outside the
-// target gamut are mapped by reducing chroma at fixed L and H, the same
-// approach CSS Color 4 uses, so hue and lightness never shift.
+// target gamut are mapped with the CSS Color 4 algorithm: chroma drops at
+// fixed L and H until clipping is no longer noticeable.
 // Math: Björn Ottosson, "A perceptual color space for image processing".
 
 import Foundation
@@ -24,27 +24,53 @@ public enum OKLCH {
     public static func rgb(
         _ l: Double, _ c: Double, _ h: Double, in gamut: OKLCHGamut = .displayP3
     ) -> (red: Double, green: Double, blue: Double) {
-        let l = min(max(l, 0), 1)
-        let c = max(c, 0)
-
-        var linear = linearRGB(l, c, h, gamut)
-        if !inGamut(linear) {
-            // Bisect chroma down until the color fits.
-            var low = 0.0, high = c
-            for _ in 0..<24 {
-                let mid = (low + high) / 2
-                if inGamut(linearRGB(l, mid, h, gamut)) { low = mid } else { high = mid }
-            }
-            linear = linearRGB(l, low, h, gamut)
-        }
+        let linear = mapToGamut(min(max(l, 0), 1), max(c, 0), h, gamut)
         return (encode(linear.0), encode(linear.1), encode(linear.2))
     }
 
-    private static func linearRGB(
-        _ l: Double, _ c: Double, _ h: Double, _ gamut: OKLCHGamut
-    ) -> (Double, Double, Double) {
+    private typealias Triple = (Double, Double, Double)
+
+    // CSS Color 4 gamut mapping (section 13.2.2): bisect chroma at fixed L and H,
+    // stopping once clipping the color changes it by less than a just-noticeable
+    // difference in OKLab, then return the clipped color.
+    private static func mapToGamut(_ l: Double, _ c: Double, _ h: Double, _ gamut: OKLCHGamut) -> Triple {
+        if l >= 1 { return (1, 1, 1) }
+        if l <= 0 { return (0, 0, 0) }
+        let origin = linearRGB(l, c, h, gamut)
+        if inGamut(origin) { return origin }
+
+        let jnd = 0.02, epsilon = 0.0001
+        var clipped = clip(origin)
+        if deltaEOK(clipped, oklab(l, c, h), gamut) < jnd { return clipped }
+
+        var low = 0.0, high = c, lowInGamut = true
+        while high - low > epsilon {
+            let chroma = (low + high) / 2
+            let current = linearRGB(l, chroma, h, gamut)
+            if lowInGamut && inGamut(current) {
+                low = chroma
+                continue
+            }
+            clipped = clip(current)
+            let e = deltaEOK(clipped, oklab(l, chroma, h), gamut)
+            if e < jnd {
+                if jnd - e < epsilon { return clipped }
+                lowInGamut = false
+                low = chroma
+            } else {
+                high = chroma
+            }
+        }
+        return clipped
+    }
+
+    private static func oklab(_ l: Double, _ c: Double, _ h: Double) -> Triple {
         let hr = h * .pi / 180
-        let a = c * cos(hr), b = c * sin(hr)
+        return (l, c * cos(hr), c * sin(hr))
+    }
+
+    private static func linearRGB(_ l: Double, _ c: Double, _ h: Double, _ gamut: OKLCHGamut) -> Triple {
+        let (l, a, b) = oklab(l, c, h)
 
         let l_ = l + 0.3963377774 * a + 0.2158037573 * b
         let m_ = l - 0.1055613458 * a - 0.0638541728 * b
@@ -68,7 +94,38 @@ public enum OKLCH {
         }
     }
 
-    private static func inGamut(_ v: (Double, Double, Double)) -> Bool {
+    // Linear RGB in the given gamut -> OKLab (Ottosson's forward matrices).
+    private static func oklab(linear v: Triple, _ gamut: OKLCHGamut) -> Triple {
+        var (r, g, b) = v
+        if gamut == .displayP3 {
+            // Linear Display P3 -> linear sRGB.
+            (r, g, b) = (
+                1.2249401763 * v.0 - 0.2249401763 * v.1,
+                -0.0420569547 * v.0 + 1.0420569547 * v.1,
+                -0.0196375546 * v.0 - 0.0786360456 * v.1 + 1.0982736002 * v.2
+            )
+        }
+        let l_ = cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b)
+        let m_ = cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b)
+        let s_ = cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b)
+        return (
+            0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
+            1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_,
+            0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_
+        )
+    }
+
+    private static func deltaEOK(_ linear: Triple, _ lab: Triple, _ gamut: OKLCHGamut) -> Double {
+        let other = oklab(linear: linear, gamut)
+        let dl = other.0 - lab.0, da = other.1 - lab.1, db = other.2 - lab.2
+        return (dl * dl + da * da + db * db).squareRoot()
+    }
+
+    private static func clip(_ v: Triple) -> Triple {
+        (min(max(v.0, 0), 1), min(max(v.1, 0), 1), min(max(v.2, 0), 1))
+    }
+
+    private static func inGamut(_ v: Triple) -> Bool {
         let e = 1e-6
         return v.0 >= -e && v.0 <= 1 + e && v.1 >= -e && v.1 <= 1 + e && v.2 >= -e && v.2 <= 1 + e
     }

@@ -21,8 +21,10 @@ It follows the color scheme, including `.preferredColorScheme`. `NSColor` has th
 
 - L: lightness 0...1, C: chroma 0...~0.37, H: hue in degrees.
 - Renders in Display P3 by default (`gamut: .sRGB` is optional).
-- Colors outside the target gamut are mapped by reducing chroma at fixed L and H,
-  as CSS Color 4 does, so hue and lightness never shift.
+- Colors outside the target gamut are mapped with the CSS Color 4 algorithm,
+  matching color.js `toGamut({ method: "css" })`: chroma drops at fixed L and H
+  until clipping the rest is no longer noticeable. Browsers currently clip
+  instead, so very saturated colors can differ from what Chrome shows.
 
 ## Install
 

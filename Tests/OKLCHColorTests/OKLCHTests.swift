@@ -44,6 +44,25 @@ final class OKLCHTests: XCTestCase {
         XCTAssertGreaterThan(reduced.green, reduced.red)
     }
 
+    func testOutOfGamutColorsMatchCSSColor4() {
+        // Reference: color.js 0.5.2 (by the CSS Color 4 editors), toGamut({ method: "css" }).
+        let cases: [(l: Double, c: Double, h: Double, srgb: (Double, Double, Double), p3: (Double, Double, Double))] = [
+            (0.434, 0.341, 260.9, (0, 0, 0.970663), (0, 0, 0.931551)),
+            (0.323, 0.378, 260.4, (0, 0, 0.666005), (0, 0, 0.638161)),
+            (0.938, 0.255, 98.4, (1, 0.919207, 0), (1, 0.921756, 0.150577)),
+            (0.7, 0.4, 150, (0, 0.760678, 0.280818), (0, 0.782484, 0.194446)),
+            (0.65, 0.3, 30, (1, 0.075194, 0), (1, 0.016388, 0)),
+            (0.5, 0.35, 320, (0.621752, 0, 0.736444), (0.578124, 0, 0.732095)),
+            (0.9, 0.2, 200, (0, 0.996949, 1), (0.249846, 0.992796, 1)),
+            (0.25, 0.3, 140, (0, 0.172754, 0), (0.012417, 0.173921, 0)),
+            (0.8, 0.37, 60, (1, 0.626934, 0.21197), (1, 0.61329, 0.09717)),
+        ]
+        for (l, c, h, srgb, p3) in cases {
+            assertRGB(OKLCH.rgb(l, c, h, in: .sRGB), equals: srgb)
+            assertRGB(OKLCH.rgb(l, c, h, in: .displayP3), equals: p3)
+        }
+    }
+
     func testLightDarkColorFollowsTheColorScheme() throws {
         guard #available(iOS 17, macOS 14, tvOS 17, visionOS 1, *) else { throw XCTSkip("Color.resolve needs iOS 17") }
         let color = Color(light: Color(oklch: 1, 0, 0), dark: Color(oklch: 0, 0, 0))
