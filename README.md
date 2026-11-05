@@ -31,7 +31,7 @@ It follows the color scheme, including `.preferredColorScheme`. `NSColor` has th
 In Xcode: File › Add Package Dependencies, then enter this repository's URL.
 
 ```swift
-.package(url: "https://github.com/ETSoftwareStudio/oklch-color.git", from: "1.0.0")
+.package(url: "https://github.com/ETSoftwareStudio/oklch-swift.git", from: "1.1.1")
 ```
 
 For gradients blended in OKLCH, pair it with
