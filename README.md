@@ -38,3 +38,7 @@ For gradients blended in OKLCH, pair it with
 [OKLCHGradient](https://github.com/fwrs/OKLCHGradient).
 
 Math: Björn Ottosson, "A perceptual color space for image processing".
+
+## License
+
+MIT. See [LICENSE](LICENSE).
