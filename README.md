@@ -58,21 +58,6 @@ For gradients blended in OKLCH, pair it with
 
 Math: Björn Ottosson, "A perceptual color space for image processing".
 
-## Releasing
-
-Releases are automated with [release-please](https://github.com/googleapis/release-please).
-Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/):
-`fix:` and `perf:` make a patch release, `feat:` a minor one, and `feat!:` a major one.
-PR titles must follow it too (CI checks them): a squash merge keeps only the title.
-
-CI compares each PR's public API with `main` (`swift package diagnose-api-breaking-changes`).
-If the PR breaks it, CI requires `!` in the PR title.
-
-1. Merge changes into `main`. release-please keeps a "chore(main): release X.Y.Z" PR open
-   with the version bump and the changelog.
-2. Merge that PR to release. The Release workflow tags the version and creates the GitHub
-   release. Swift Package Manager and the Swift Package Index pick up the new tag.
-
 ## License
 
 MIT. See [LICENSE](LICENSE).
