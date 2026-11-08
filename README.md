@@ -47,9 +47,11 @@ hover.color()                                         // Display P3; color(in: .
 
 In Xcode: File › Add Package Dependencies, then enter this repository's URL.
 
+<!-- x-release-please-start-version -->
 ```swift
 .package(url: "https://github.com/ETSoftwareStudio/oklch-swift.git", from: "1.2.0")
 ```
+<!-- x-release-please-end -->
 
 For gradients blended in OKLCH, pair it with
 [OKLCHGradient](https://github.com/fwrs/OKLCHGradient).
